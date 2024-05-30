@@ -1,2 +1,5 @@
 # terminal-engine
-shit 3d terminal engine no external libs
+
+garbage terminal 3d engine
+
+![](assets/spinning_cube.gif)
