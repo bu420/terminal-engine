@@ -52,7 +52,7 @@ void triangle(vec v0, vec v1, vec v2, vec tc0, vec tc1, vec tc2) {
                     float t = (w0 * tc0[1] + w1 * tc1[1] + w2 * tc2[1]) * z;
 
                     clock_t uptime = clock() / (CLOCKS_PER_SEC / 1000);
-                    float M = (sinf(uptime / 1000.0f) + 1.0f) / 2.0f * 4.0f;
+                    float M = 2.0f;
                     float pattern = (fmod(s * M, 1.0) > 0.5) ^ (fmod(t * M, 1.0) < 0.5);
                     if (pattern < 0.5f) pattern = 0.4f;
                     color_buf[j * WIDTH + i][0] = pattern;

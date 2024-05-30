@@ -1,21 +1,18 @@
 #include <stdio.h>
 #include <time.h>
 
-#define WIDTH 88
-#define HEIGHT 44
+#define WIDTH 64
+#define HEIGHT 32
 
 #include "te/linalg.h"
 #include "te/rast.h"
+#include "cube.c"
+#include "stanford_bunny.c"
 
 float z_buf[WIDTH * HEIGHT];
 rgb color_buf[WIDTH * HEIGHT];
 
 char chars[] = " `^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-vec vertices[8] = {{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
-vec tex_coords[4] = {{0,0},{1,0},{1,1},{0,1}};
-vec normals[6] = {{0,0,1},{1,0,0},{0,0,-1},{-1,0,0},{0,1,0},{0,-1,0}};
-int indices[36] = {0,1,3,3,1,2,1,5,2,2,5,6,5,4,6,6,4,7,4,0,7,7,0,3,3,2,7,7,2,6,4,5,0,0,5,1};
-int tex_coords_indices[6] = {0,1,3,3,1,2};
 
 void clear() {
     printf("\033[u");
@@ -33,9 +30,9 @@ int main() {
         vec vertex_buf[36];
         vec tex_coord_buf[36];
         for (int i = 0; i < 36; i++) {
-            memcpy(vertex_buf[i], vertices[indices[i]], 3 * sizeof(float));
+            memcpy(vertex_buf[i], cube_vertices[cube_indices[i]], 3 * sizeof(float));
             vertex_buf[i][3] = 1.0f;
-            memcpy(tex_coord_buf[i], tex_coords[tex_coords_indices[i % 6]], 2 * sizeof(float));
+            memcpy(tex_coord_buf[i], cube_tex_coords[cube_tex_coords_indices[i % 6]], 2 * sizeof(float));
         }
 
         clear();

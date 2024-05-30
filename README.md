@@ -1,2 +1,2 @@
 # terminal-engine
-shit 3d engine no external libs
+shit 3d terminal engine no external libs
