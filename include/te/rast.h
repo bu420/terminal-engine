@@ -2,10 +2,17 @@
 
 #include <stdint.h>
 
-typedef uint8_t rgb[3];
+typedef struct {
+    uint8_t r, g, b;
+} rgb;
+
+typedef struct {
+    uint32_t ch;
+    rgb fg, bg;
+} char_info;
 
 extern float z_buf[WIDTH * HEIGHT];
-extern rgb color_buf[WIDTH * HEIGHT];
+extern char_info char_buf[WIDTH * HEIGHT];
 
 float edge(vec a, vec b, vec c) {
     return (c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0]);
@@ -55,7 +62,13 @@ void triangle(vec v0, vec v1, vec v2, vec tc0, vec tc1, vec tc2) {
                     float M = 2.0f;
                     float pattern = (fmod(s * M, 1.0) > 0.5) ^ (fmod(t * M, 1.0) < 0.5);
                     if (pattern < 0.5f) pattern = 0.4f;
-                    color_buf[j * WIDTH + i][0] = pattern;
+
+                    char_info info;
+                    info.ch = 0x8896e2;
+                    info.fg = (rgb){255, 0, 0};
+                    info.bg = (rgb){0, 0, 255};
+
+                    char_buf[j * WIDTH + i] = info;
                 }
             }
         }

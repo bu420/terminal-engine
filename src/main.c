@@ -6,22 +6,53 @@
 
 #include "te/linalg.h"
 #include "te/rast.h"
-#include "cube.c"
-#include "stanford_bunny.c"
+#include "assets"
 
 float z_buf[WIDTH * HEIGHT];
-rgb color_buf[WIDTH * HEIGHT];
+char_info char_buf[WIDTH * HEIGHT];
 
-char chars[] = " `^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+#define CHAR_BLOCK 0x8896e2
+#define CHAR_HALF_BLOCK_BOTTOM 0x8496e2
+#define CHAR_HALF_BLOCK_TOP 0x8096e2
+#define CHAR_DOTTED_HIGH_DENSITY 0x9396e2
+#define CHAR_DOTTED_MEDIUM_DENSITY 0x9296e2
+#define CHAR_DOTTED_LOW_DENSITY 0x9196e2
+
+int char_info_to_str(char_info info, char out[], int max) {
+    char str[5];
+    str[0] = (info.ch >> 0) & 0xFF;
+    str[1] = (info.ch >> 8) & 0xFF;
+    str[2] = (info.ch >> 16) & 0xFF;
+    str[3] = (info.ch >> 24) & 0xFF;
+    str[4] = '\0';
+
+    int len = snprintf(out, max - 1, "\x1b[38;2;%i;%i;%im\x1b[48;2;%i;%i;%im%s", 
+        info.fg.r, info.fg.g, info.fg.b, 
+        info.bg.r, info.bg.g, info.bg.b,
+        str);
+    
+    return len;
+}
 
 void clear() {
+    // Restore cursor position.
     printf("\033[u");
+
     memset(z_buf, 0, WIDTH * HEIGHT * sizeof(float));
-    memset(color_buf, 0, WIDTH * HEIGHT * sizeof(rgb));
+
+    char_info info = {.ch = ' ', .fg = {0, 0, 0}, .bg = {0, 0, 0}};
+    for (int i = 0; i < WIDTH * HEIGHT; i++) {
+        char_buf[i] = info;
+    }
 }
 
 int main() {
+    // Make cursor invisible.
+    printf("\x1b[?25l");
+
+    // Save cursor position.
     printf("\033[s");
+
     mat proj, view;
     perspective(proj, HEIGHT / (float)WIDTH * 2.0f, 70.0f, 0.0001f, 1000.0f);
     look_at(view, (vec){-2.3f, 2.3f, -2.3f}, (vec){0.0f, 0.0f, 0.0f}, (vec){0.0f, -1.0f, 0.0f});
@@ -49,18 +80,23 @@ int main() {
             triangle(tri[0], tri[1], tri[2], tex_coord_buf[i * 3 + 0], tex_coord_buf[i * 3 + 1], tex_coord_buf[i * 3 + 2]);
         }
 
-        char screen[WIDTH * HEIGHT + HEIGHT + 1];
+        char screen[WIDTH * HEIGHT * 40 + 200];
         int i = 0;
 
         for (int y = 0; y < HEIGHT; y++) {
             for (int x = 0; x < WIDTH; x++) {
-                float color = color_buf[y * WIDTH + x][0];
-                int j = (int)((strlen(chars) - 1) * color);
-                screen[i++] = chars[j];
+                char str[40];
+                int len = char_info_to_str(char_buf[y * WIDTH + x], str, 40);
+                for (int j = 0; j < len; j++) {
+                    screen[i++] = str[j];
+                }
             }
             screen[i++] = '\n';
         }
         screen[i++] = '\0';
         puts(screen);
     }
+
+    // Make cursor visible.
+    printf("\x1b[?25h");
 }
