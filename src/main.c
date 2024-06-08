@@ -8,15 +8,15 @@
 #include "te/rast.h"
 #include "assets"
 
-float z_buf[WIDTH * HEIGHT];
-char_info char_buf[WIDTH * HEIGHT];
-
 #define CHAR_BLOCK 0x8896e2
 #define CHAR_HALF_BLOCK_BOTTOM 0x8496e2
 #define CHAR_HALF_BLOCK_TOP 0x8096e2
 #define CHAR_DOTTED_HIGH_DENSITY 0x9396e2
 #define CHAR_DOTTED_MEDIUM_DENSITY 0x9296e2
 #define CHAR_DOTTED_LOW_DENSITY 0x9196e2
+
+float z_buf[WIDTH * HEIGHT];
+char_info char_buf[WIDTH * HEIGHT];
 
 int char_info_to_str(char_info info, char out[], int max) {
     char str[5];
@@ -44,6 +44,20 @@ void clear() {
     for (int i = 0; i < WIDTH * HEIGHT; i++) {
         char_buf[i] = info;
     }
+}
+
+char_info shader(vec tc, vec n) {
+    float M = 2.0f;
+    float pattern = (fmod(tc[0] * M, 1.0) > 0.5) ^ (fmod(tc[1] * M, 1.0) < 0.5);
+
+    char_info info;
+    info.ch = 0x8896e2;
+    if (pattern)
+        info.fg = (rgb){200, 180, 80};
+    else 
+        info.fg = (rgb){70, 160, 180};
+    info.bg = (rgb){0, 0, 0};
+    return info;
 }
 
 int main() {
@@ -77,7 +91,11 @@ int main() {
             vec tri[3];
             for (int j = 0; j < 3; j++)
                 vec_mul_mat(vertex_buf[i * 3 + j], mvp, tri[j]);
-            triangle(tri[0], tri[1], tri[2], tex_coord_buf[i * 3 + 0], tex_coord_buf[i * 3 + 1], tex_coord_buf[i * 3 + 2]);
+            triangle(RASTER_TO_Z_BUF_AND_CHAR_BUF, z_buf, char_buf,
+                tri[0], tri[1], tri[2], 
+                true, tex_coord_buf[i * 3 + 0], tex_coord_buf[i * 3 + 1], tex_coord_buf[i * 3 + 2], 
+                false, NULL, NULL, NULL, 
+                shader);
         }
 
         char screen[WIDTH * HEIGHT * 40 + 200];

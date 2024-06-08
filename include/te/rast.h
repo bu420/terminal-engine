@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
     uint8_t r, g, b;
@@ -11,14 +12,21 @@ typedef struct {
     rgb fg, bg;
 } char_info;
 
-extern float z_buf[WIDTH * HEIGHT];
-extern char_info char_buf[WIDTH * HEIGHT];
+typedef enum {
+    RASTER_TO_Z_BUF_AND_CHAR_BUF,
+    RASTER_TO_Z_BUF,
+    RASTER_TO_CHAR_BUF
+} raster_target;
 
 float edge(vec a, vec b, vec c) {
     return (c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0]);
 }
 
-void triangle(vec v0, vec v1, vec v2, vec tc0, vec tc1, vec tc2) {
+void triangle(raster_target target, float z_buf[], char_info char_buf[],
+    vec v0, vec v1, vec v2, 
+    bool has_tex_coords, vec tc0, vec tc1, vec tc2,
+    bool has_normals, vec n0, vec n1, vec n2,
+    char_info (* shader_callback)(vec tc, vec n)) {
     v0[0] /= v0[2]; v0[1] /= v0[2];
     v1[0] /= v1[2]; v1[1] /= v1[2];
     v2[0] /= v2[2]; v2[1] /= v2[2];
@@ -55,20 +63,10 @@ void triangle(vec v0, vec v1, vec v2, vec tc0, vec tc1, vec tc2) {
                 if (z > z_buf[j * WIDTH + i]) {
                     z_buf[j * WIDTH + i] = z;
 
-                    float s = (w0 * tc0[0] + w1 * tc1[0] + w2 * tc2[0]) * z;
-                    float t = (w0 * tc0[1] + w1 * tc1[1] + w2 * tc2[1]) * z;
+                    vec tc = {(w0 * tc0[0] + w1 * tc1[0] + w2 * tc2[0]) * z,
+                        (w0 * tc0[1] + w1 * tc1[1] + w2 * tc2[1]) * z};
 
-                    clock_t uptime = clock() / (CLOCKS_PER_SEC / 1000);
-                    float M = 2.0f;
-                    float pattern = (fmod(s * M, 1.0) > 0.5) ^ (fmod(t * M, 1.0) < 0.5);
-                    if (pattern < 0.5f) pattern = 0.4f;
-
-                    char_info info;
-                    info.ch = 0x8896e2;
-                    info.fg = (rgb){255, 0, 0};
-                    info.bg = (rgb){0, 0, 255};
-
-                    char_buf[j * WIDTH + i] = info;
+                    char_buf[j * WIDTH + i] = shader_callback(tc, NULL);
                 }
             }
         }
