@@ -4,14 +4,23 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
+#define FP_SHIFT_AMOUNT 16
+#define FP_SHIFT_MASK ((1 << FPM_SHIFT_AMOUNT) - 1)
+
+typedef uint32_t te_fpfloat;
+
+typedef te_fpfloat te_vec4[4];
+
+
+
+typedef fpfloat vec[4];
+typedef fpfloat mat[4][4];
+
 #define LENGTH(v) sqrtf(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 #define NORMALIZE(v) {v[0] / LENGTH(v), v[1] / LENGTH(v), v[2] / LENGTH(v)}
 #define CROSS(v0, v1) {v0[1]*v1[2]-v0[2]*v1[1], v0[2]*v1[0]-v0[0]*v1[2], v0[0]*v1[1]-v0[1]*v1[0]}
 #define DOT(v0, v1) (v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2])
 #define IDENTITY {{1.0f,0.0f,0.0f,0.0f},{0.0f,1.0f,0.0f,0.0f},{0.0f,0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f,1.0f}}
-
-typedef float vec[4];
-typedef float mat[4][4];
 
 void perspective(mat m, float aspect, float fov, float near, float far) {
     memset(m, 0, 16 * sizeof(float));
