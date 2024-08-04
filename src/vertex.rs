@@ -1,4 +1,4 @@
-use std::{iter::zip, ops::{Add, AddAssign, Div, Sub}};
+use std::{iter::zip, ops::{AddAssign, Div}};
 
 use glm::Vec4;
 
@@ -24,34 +24,12 @@ impl Vertex {
     }
 }
 
-impl Add<&Vertex> for &Vertex {
-    type Output = Vertex;
-
-    fn add(self, rhs: &Vertex) -> Vertex {        
-        Vertex {
-            position: self.position + rhs.position,
-            attributes: zip(&self.attributes, &rhs.attributes).map(|(a, b)| a + b).collect()
-        }
-    }
-}
-
 impl AddAssign<&Vertex> for Vertex {
     fn add_assign(&mut self, rhs: &Vertex) {
         self.position += rhs.position;
 
         for (a, b) in zip(&mut self.attributes, &rhs.attributes) {
             *a += b;
-        }
-    }
-}
-
-impl Sub<&Vertex> for &Vertex {
-    type Output = Vertex;
-
-    fn sub(self, rhs: &Vertex) -> Vertex {        
-        Vertex {
-            position: self.position - rhs.position,
-            attributes: zip(&self.attributes, &rhs.attributes).map(|(a, b)| a - b).collect()
         }
     }
 }

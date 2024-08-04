@@ -1,86 +1,26 @@
+use std::iter::zip;
+
 use glm::{vec2, vec4, Vec2, Vec4};
 use itertools::izip;
 
-use crate::{char::{AnsiColorMode, CharColor, CharColorLayer, CharInfo}, clip::clip_triangle, vertex::Vertex};
+use crate::{char::{AnsiColorMode, CharColor, CharInfo}, clip::clip_triangle, vertex::Vertex};
 
-pub struct Line {
-    pub current: Vertex,
-    num_steps: usize,
-    i: usize,
-    increment: Vertex
-}
-
-impl Line {
-    pub fn new(start: &Vertex, end: &Vertex) -> Self {
-        let mut start_clone = start.clone();
-        start_clone.position.x = start_clone.position.x.floor();
-        start_clone.position.y = start_clone.position.y.floor();
-
-        let mut end_clone = end.clone();
-        end_clone.position.x = end_clone.position.x.floor();
-        end_clone.position.y = end_clone.position.y.floor();
-        
-        let mut difference = &end_clone - &start_clone;
-        difference.position = difference.position.abs();
-        
-        let num_steps = 
-            if difference.position.x > difference.position.y { difference.position.x } 
-            else { difference.position.y } as usize;
-        
-        Self {
-            current: start.clone(),
-            num_steps: num_steps as usize,
-            i: 0,
-            increment: &difference / num_steps
-        }
-    }
-
-    pub fn step(&mut self) -> bool {
-        if self.i < self.num_steps {
-            self.current += &self.increment;
-            self.i += 1;
-            return true;
-        }
-        false
-    }
-}
-
-pub fn half_block_shader(c: &mut CharInfo, half: CharHalf, r: u8, g: u8, b: u8) {
-    match half {
-        CharHalf::Top => {
+pub fn half_block_shader(c: &mut CharInfo, half: &CharHalf, color: &CharColor) {
+    match (half, c.char_code) {
+        (CharHalf::Top, '▄') => c.bg_color = Some(color.clone()),
+        (CharHalf::Bottom, '▀') => c.bg_color = Some(color.clone()),
+        (CharHalf::Top, _) => {
             c.char_code = '▀';
-            c.fg_color = Some(CharColor {
-                r,
-                g,
-                b,
-                layer: CharColorLayer::Foreground
-            });
+            c.fg_color = Some(color.clone());
         },
-        CharHalf::Bottom => {
-            match c.fg_color {
-                Some(_) => {
-                    c.bg_color = Some(CharColor {
-                        r,
-                        g,
-                        b,
-                        layer: CharColorLayer::Background
-                    });
-                },
-                None => {
-                    c.char_code = '▄';
-                    c.fg_color = Some(CharColor {
-                        r,
-                        g,
-                        b,
-                        layer: CharColorLayer::Foreground
-                    });
-                }
-            }
+        (CharHalf::Bottom, _) => {
+            c.char_code = '▄';
+            c.fg_color = Some(color.clone());
         }
     }
 }
 
-pub type Shader = fn(&Vertex, &mut CharInfo, CharHalf);
+pub type Shader = fn(&Vertex, &mut CharInfo, &CharHalf);
 
 pub enum CharHalf {
     Top,
@@ -109,12 +49,12 @@ impl Framebuf {
         self.z_buf.fill(0.0);
     }
 
-    pub fn print(&self) {
+    pub fn print(&self, mode: &AnsiColorMode) {
         let mut out = String::with_capacity(self.w * self.h / 2 * 45 + self.h / 2);
 
         for y in 0..self.h / 2 {
             for x in 0..self.w {
-                out.push_str(&self.char_buf[y * self.w + x].to_ansi(&AnsiColorMode::AnsiTrueColor));
+                out.push_str(&self.char_buf[y * self.w + x].to_ansi(mode));
             }
 
             out.push('\n');
@@ -133,19 +73,43 @@ impl Framebuf {
             p.w)
     }
 
-    pub fn draw_line(&mut self, start: &Vertex, end: &Vertex, shader: Shader) {
-        let mut line = Line::new(
-            &Vertex { position: self.prepare_position(&start.position), attributes: start.attributes.clone() }, 
-            &Vertex { position: self.prepare_position(&end.position), attributes: end.attributes.clone() });
+    pub fn draw_line(&mut self, start: &Vertex, end: &Vertex, shader: Shader) {        
+        if is_point_visible(start.position) && is_point_visible(end.position) {
+            self.raster_line(start, end, shader);
+        }
 
-        while line.step() {
-            let x = line.current.position.x as usize;
-            let y = line.current.position.y as usize;
+
+    }
+
+    // This function assumes the entire line is visible.
+    fn raster_line(&mut self, start: &Vertex, end: &Vertex, shader: Shader) {
+        let start_pos = self.prepare_position(&start.position);
+        
+        let difference = Vertex { 
+            position: self.prepare_position(&end.position) - start_pos, 
+            attributes: zip(&end.attributes, &start.attributes).map(|(a, b)| a - b).collect() 
+        };
+        
+        let num_steps = difference.position.x.abs().max(difference.position.y.abs()) as usize;
+        
+        let mut current = Vertex { position: start_pos, attributes: start.attributes.clone() };
+        let increment = &difference / num_steps;
+        
+        for _ in 0..num_steps {
+            let x = current.position.x as usize;
+            let y = current.position.y as usize;
+
+            // TODO: replace with proper clipping.
+            if x >= self.w || y >= self.h {
+                continue;
+            }
 
             shader(
-                &line.current, 
+                &current, 
                 &mut self.char_buf[(y / 2) * self.w + x], 
-                if y % 2 == 0 { CharHalf::Top } else { CharHalf::Bottom });
+                if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
+
+            current += &increment;
         }
     }
 
@@ -170,33 +134,35 @@ impl Framebuf {
     // This function assumes the entire triangle is visible.
     fn raster_triangle(&mut self, vertices: &[&Vertex; 3], shader: Shader) {
         let p: Vec<Vec4> = vertices.iter().map(|v| self.prepare_position(&v.position)).collect();
+        let area_inv = 1.0 / calc_area(&p[0].xy(), &p[1].xy(), &p[2].xy());
 
-        let area = calc_area(&p[0].xy(), &p[1].xy(), &p[2].xy());
+        // Calculate bounding box.
+        let min_x = p.iter().map(|p| p.x).fold(f32::INFINITY, f32::min).max(0.0) as usize;
+        let max_x = p.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max).min(self.w as f32 - 1.0) as usize;
+        let min_y = p.iter().map(|p| p.y).fold(f32::INFINITY, f32::min).max(0.0) as usize;
+        let max_y = p.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max).min(self.h as f32 - 1.0) as usize;
 
-        for x in 0..self.w {
-            for y in 0..self.h {
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
                 let point = vec2(x as f32 + 0.5, y as f32 + 0.5);
-
-                let mut a0 = calc_area(&p[1].xy(), &p[2].xy(), &point);
-                let mut a1 = calc_area(&p[2].xy(), &p[0].xy(), &point);
-                let mut a2 = calc_area(&p[0].xy(), &p[1].xy(), &point);
+                let a0 = calc_area(&p[1].xy(), &p[2].xy(), &point) * area_inv;
+                let a1 = calc_area(&p[2].xy(), &p[0].xy(), &point) * area_inv;
+                let a2 = calc_area(&p[0].xy(), &p[1].xy(), &point) * area_inv;
 
                 if a0 >= 0.0 && a1 >= 0.0 && a2 >= 0.0 {
-                    a0 /= area;
-                    a1 /= area;
-                    a2 /= area;
+                    let attributes = izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
+                        .map(|(a, b, c)| a * a0 + b * a1 + c * a2)
+                        .collect();
 
                     let vertex = Vertex {
                         position: Default::default(),
-                        // Interpolate attributes.
-                        attributes: izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
-                            .map(|(a, b, c)| a * a0 + b * a1 + c * a2).collect()
+                        attributes
                     };
 
                     shader(
                         &vertex, 
                         &mut self.char_buf[(y / 2) * self.w + x], 
-                        if y % 2 == 0 { CharHalf::Top } else { CharHalf::Bottom });
+                        if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
                 }
             }
         }

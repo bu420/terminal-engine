@@ -18,6 +18,10 @@ impl ClipComponent {
     }
 }
 
+/*pub fn clip_line(start: &Vertex, end: &Vertex) -> Option<(Vertex, Vertex)> {
+    start.position.x 
+}*/
+
 pub fn clip_triangle(vertices: &[&Vertex; 3]) -> Vec<Vertex> {
     let result = clip_component(
         &vec![vertices[0].clone(), vertices[1].clone(), vertices[2].clone()], 

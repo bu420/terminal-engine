@@ -13,22 +13,12 @@ pub enum AnsiColorMode {
 pub struct CharColor {
     pub r: u8,
     pub g: u8,
-    pub b: u8,
-    pub layer: CharColorLayer
+    pub b: u8
 }
 
 impl CharColor {
-    pub fn new(layer: &CharColorLayer) -> Self {
-        Self {
-            r: 0,
-            g: 0,
-            b: 0,
-            layer: *layer
-        }
-    }
-
-    pub fn to_ansi(&self, mode: &AnsiColorMode) -> String {
-        let layer_str = match self.layer {
+    pub fn to_ansi(&self, layer: &CharColorLayer, mode: &AnsiColorMode) -> String {
+        let layer_str = match layer {
             CharColorLayer::Foreground => "38",
             CharColorLayer::Background => "48",
         };
@@ -76,22 +66,24 @@ impl CharInfo {
     }
 
     pub fn to_ansi(&self, mode: &AnsiColorMode) -> String {
-        if self.fg_color.is_none() && self.bg_color.is_none() {
-            return "\x1b[0m ".to_owned();
-        }
-
         let mut str = String::with_capacity(45);
+        str.push_str("\x1b[0m");
 
-        if self.fg_color.is_some() {
-            str.push_str(&self.fg_color.unwrap().to_ansi(&mode));
+        if self.fg_color.is_none() && self.bg_color.is_none() {
+            str.push(' ');
+            return str;
         }
 
-        if self.bg_color.is_some() {
-            str.push_str(&self.bg_color.unwrap().to_ansi(&mode));
+        if let Some(fg_color) = &self.fg_color {
+            str.push_str(&fg_color.to_ansi(&CharColorLayer::Foreground, mode));
+        }
+    
+        if let Some(bg_color) = &self.bg_color {
+            str.push_str(&bg_color.to_ansi(&CharColorLayer::Background, mode));
         }
 
         str.push(self.char_code);
         
-        return str;
+        str
     }
 }

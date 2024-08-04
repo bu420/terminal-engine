@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use char::CharInfo;
+use char::{AnsiColorMode, CharColor, CharInfo};
 use glm::{rotate, vec3, vec4};
 use raster::{half_block_shader, CharHalf, Framebuf};
 use vertex::Vertex;
@@ -48,16 +48,23 @@ fn main() {
         let v1 = Vertex {position: mvp_matrix * vec4(-1.0, 1.0, 0.0, 1.0), attributes: vec![0.3, 0.9, 0.7] };
         let v2 = Vertex {position: mvp_matrix * vec4(1.0, 1.0, 0.0, 1.0), attributes: vec![0.6, 0.7, 0.5] };
 
-        fb.draw_triangle(&[&v0, &v1, &v2], |vertex: &Vertex, c: &mut CharInfo, half: CharHalf| {
+        fb.draw_triangle(&[&v0, &v1, &v2], |vertex: &Vertex, c: &mut CharInfo, half: &CharHalf| {
             let r = (vertex.attributes[0] * 255.0) as u8;
             let g = (vertex.attributes[1] * 255.0) as u8;
             let b = (vertex.attributes[2] * 255.0) as u8;
-            half_block_shader(c, half, r, g, b);
+            half_block_shader(c, &half, &CharColor { r, g, b });
         });
 
-        fb.print();
+        let white_shader = |_: &Vertex, c: &mut CharInfo, half: &CharHalf| 
+            half_block_shader(c, &half, &CharColor { r: 255u8, g: 255u8, b: 255u8 });
+
+        fb.draw_line(&v0, &v1, white_shader);
+        fb.draw_line(&v1, &v2, white_shader);
+        fb.draw_line(&v2, &v0, white_shader);
+
+        fb.print(&AnsiColorMode::AnsiTrueColor);
     }
 
     // Make cursor visible.
-    //puts("\x1b[?25h");
+    //write!("\x1b[?25h");
 }
