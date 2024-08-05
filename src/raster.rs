@@ -46,7 +46,7 @@ impl Framebuf {
 
     pub fn clear(&mut self) {
         self.char_buf.fill(Default::default());
-        self.z_buf.fill(0.0);
+        self.z_buf.fill(f32::INFINITY);
     }
 
     pub fn print(&self, mode: &AnsiColorMode) {
@@ -78,7 +78,7 @@ impl Framebuf {
             self.raster_line(start, end, shader);
         }
 
-
+        
     }
 
     // This function assumes the entire line is visible.
@@ -150,19 +150,25 @@ impl Framebuf {
                 let a2 = calc_area(&p[0].xy(), &p[1].xy(), &point) * area_inv;
 
                 if a0 >= 0.0 && a1 >= 0.0 && a2 >= 0.0 {
-                    let attributes = izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
+                    let z = p[0].z * a0 + p[1].z * a1 + p[2].z * a2;
+
+                    if z < self.z_buf[y * self.w + x] {
+                        self.z_buf[y * self.w + x] = z;
+
+                        let attributes = izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
                         .map(|(a, b, c)| a * a0 + b * a1 + c * a2)
                         .collect();
 
-                    let vertex = Vertex {
-                        position: Default::default(),
-                        attributes
-                    };
+                        let vertex = Vertex {
+                            position: Default::default(),
+                            attributes
+                        };
 
-                    shader(
-                        &vertex, 
-                        &mut self.char_buf[(y / 2) * self.w + x], 
-                        if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
+                        shader(
+                            &vertex, 
+                            &mut self.char_buf[(y / 2) * self.w + x], 
+                            if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
+                    }
                 }
             }
         }
