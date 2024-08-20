@@ -1,7 +1,8 @@
 use std::iter::zip;
 
-use glm::{vec2, vec4, Vec2, Vec4};
+use glm::{vec2, vec3, vec4, Mat3, Mat4, Vec2, Vec4};
 use itertools::izip;
+use tobj::Model;
 
 use crate::{char::{AnsiColorMode, CharColor, CharInfo}, clip::clip_triangle, vertex::Vertex};
 
@@ -49,18 +50,18 @@ impl Framebuf {
         self.z_buf.fill(f32::INFINITY);
     }
 
-    pub fn print(&self, mode: &AnsiColorMode) {
-        let mut out = String::with_capacity(self.w * self.h / 2 * 45 + self.h / 2);
+    pub fn to_string(&self, mode: &AnsiColorMode) -> String {
+        let mut str = String::with_capacity(self.w * self.h / 2 * 45 + self.h / 2);
 
         for y in 0..self.h / 2 {
             for x in 0..self.w {
-                out.push_str(&self.char_buf[y * self.w + x].to_ansi(mode));
+                str.push_str(&self.char_buf[y * self.w + x].to_ansi(mode));
             }
 
-            out.push('\n');
+            str.push_str("\r\n");
         }
 
-        print!("{out}");
+        str
     }
 
     fn prepare_position(&self, p: &Vec4) -> Vec4 {
@@ -171,6 +172,34 @@ impl Framebuf {
                     }
                 }
             }
+        }
+    }
+
+    pub fn draw_model(&mut self, model: &Model, mvp_matrix: &Mat4, normal_matrix: &Mat3, shader: Shader) {
+        let mesh = &model.mesh;
+
+        for indices in mesh.indices.chunks(3) {            
+            let get_position = |i| mvp_matrix * vec4(
+                mesh.positions[3 * i as usize],
+                mesh.positions[3 * i as usize + 1],
+                mesh.positions[3 * i as usize + 2],
+                1.0,
+            );
+
+            let get_normal = |i| {
+                let normal = normal_matrix * vec3(
+                    mesh.normals[3 * i as usize], 
+                    mesh.normals[3 * i as usize + 1], 
+                    mesh.normals[3 * i as usize + 2]
+                );
+                vec![normal[0], normal[1], normal[2]]
+            };
+
+            let v0 = Vertex { position: get_position(indices[0]), attributes: get_normal(indices[0]) };
+            let v1 = Vertex { position: get_position(indices[1]), attributes: get_normal(indices[1]) };
+            let v2 = Vertex { position: get_position(indices[2]), attributes: get_normal(indices[2]) };
+
+            self.draw_triangle(&[&v0, &v1, &v2], shader);
         }
     }
 }
