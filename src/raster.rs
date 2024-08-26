@@ -1,10 +1,11 @@
+use core::f32;
 use std::iter::zip;
 
-use glm::{vec2, vec3, vec4, Mat3, Mat4, Vec2, Vec4};
-use itertools::izip;
+use glm::{make_vec4, vec2, vec3, vec4, Mat3, Mat4, Vec2, Vec3, Vec4};
+use itertools::{izip, Itertools};
 use tobj::Model;
 
-use crate::{char::{AnsiColorMode, CharColor, CharInfo}, clip::clip_triangle, vertex::Vertex};
+use crate::{char::{AnsiColorMode, CharColor, CharInfo}, clip::{clip_triangle, should_backface_cull}, vertex::Vertex};
 
 pub fn half_block_shader(c: &mut CharInfo, half: &CharHalf, color: &CharColor) {
     match (half, c.char_code) {
@@ -115,7 +116,7 @@ impl Framebuf {
     }
 
     pub fn draw_triangle(&mut self, vertices: &[&Vertex; 3], shader: Shader) {
-        // Raster triangle without clipping if all vertices are visible.
+        // Raster triangle without clipping if all vertices are visible
         if !vertices.iter().map(|v| is_point_visible(v.position)).collect::<Vec<bool>>().contains(&false) {
             self.raster_triangle(&vertices, shader);
             return;
@@ -132,12 +133,13 @@ impl Framebuf {
         }
     }
 
-    // This function assumes the entire triangle is visible.
+    // Assumes entire triangle is visible
     fn raster_triangle(&mut self, vertices: &[&Vertex; 3], shader: Shader) {
-        let p: Vec<Vec4> = vertices.iter().map(|v| self.prepare_position(&v.position)).collect();
-        let area_inv = 1.0 / calc_area(&p[0].xy(), &p[1].xy(), &p[2].xy());
+        // W division and viewport transformation
+        let p = vertices.iter().map(|v| self.prepare_position(&v.position)).collect::<Vec<Vec4>>();
+        let area_inv = 1.0 / edge_func(&p[0].xy(), &p[1].xy(), &p[2].xy());
 
-        // Calculate bounding box.
+        // Calculate bounding box
         let min_x = p.iter().map(|p| p.x).fold(f32::INFINITY, f32::min).max(0.0) as usize;
         let max_x = p.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max).min(self.w as f32 - 1.0) as usize;
         let min_y = p.iter().map(|p| p.y).fold(f32::INFINITY, f32::min).max(0.0) as usize;
@@ -146,58 +148,80 @@ impl Framebuf {
         for x in min_x..=max_x {
             for y in min_y..=max_y {
                 let point = vec2(x as f32 + 0.5, y as f32 + 0.5);
-                let a0 = calc_area(&p[1].xy(), &p[2].xy(), &point) * area_inv;
-                let a1 = calc_area(&p[2].xy(), &p[0].xy(), &point) * area_inv;
-                let a2 = calc_area(&p[0].xy(), &p[1].xy(), &point) * area_inv;
 
-                if a0 >= 0.0 && a1 >= 0.0 && a2 >= 0.0 {
-                    let z = p[0].z * a0 + p[1].z * a1 + p[2].z * a2;
-
-                    if z < self.z_buf[y * self.w + x] {
-                        self.z_buf[y * self.w + x] = z;
-
-                        let attributes = izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
-                        .map(|(a, b, c)| a * a0 + b * a1 + c * a2)
-                        .collect();
-
-                        let vertex = Vertex {
-                            position: Default::default(),
-                            attributes
-                        };
-
-                        shader(
-                            &vertex, 
-                            &mut self.char_buf[(y / 2) * self.w + x], 
-                            if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
-                    }
+                // Barycentric coordinates
+                let bc = [(1, 2), (2, 0), (0, 1)].iter()
+                    .map(|(i, j)| edge_func(&p[*i].xy(), &p[*j].xy(), &point) * area_inv)
+                    .collect::<Vec<f32>>();
+                
+                // Skip if point outside triangle
+                if bc.iter().map(|bc| *bc >= 0.0).contains(&false) {
+                    continue;
                 }
+
+                let z = p[0].z * bc[0] + p[1].z * bc[1] + p[2].z * bc[2];
+
+                // Depth testing
+                if z >= self.z_buf[y * self.w + x] {
+                    continue;
+                }
+
+                self.z_buf[y * self.w + x] = z;
+
+                // Interpolate vertex using barycentric coordinates
+
+                let one_over_w = izip!(&bc, &p).map(|(bc, p)| bc / p.w).collect::<Vec<f32>>();
+                let sum_one_over_w = one_over_w.iter().sum::<f32>();
+
+                let vertex = Vertex {
+                    position: make_vec4(&izip!(&p[0], &p[1], &p[2])
+                        .map(|(a, b, c)| a * bc[0] + b * bc[1] + c * bc[2])
+                        .collect::<Vec<_>>()),
+
+                    attributes: izip!(&vertices[0].attributes, &vertices[1].attributes, &vertices[2].attributes)
+                        .map(|(a, b, c)| (a * one_over_w[0] + b * one_over_w[1] + c * one_over_w[2]) / sum_one_over_w)
+                        .collect()
+                };
+
+                shader(
+                    &vertex, 
+                    &mut self.char_buf[(y / 2) * self.w + x], 
+                    if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
             }
         }
     }
 
-    pub fn draw_model(&mut self, model: &Model, mvp_matrix: &Mat4, normal_matrix: &Mat3, shader: Shader) {
+    pub fn draw_model(&mut self, model: &Model, model_matrix: &Mat4, vp_matrix: &Mat4, normal_matrix: &Mat3, camera_pos: &Vec3, shader: Shader) {
         let mesh = &model.mesh;
 
-        for indices in mesh.indices.chunks(3) {            
-            let get_position = |i| mvp_matrix * vec4(
+        for indices in mesh.indices.chunks(3) {     
+            let get_position = |i| vec4(
                 mesh.positions[3 * i as usize],
                 mesh.positions[3 * i as usize + 1],
                 mesh.positions[3 * i as usize + 2],
                 1.0,
             );
 
-            let get_normal = |i| {
+            if should_backface_cull(&[get_position(indices[0]), get_position(indices[1]), get_position(indices[2])], model_matrix, camera_pos) {
+                continue;
+            }
+
+            let get_attributes = |i| {
                 let normal = normal_matrix * vec3(
                     mesh.normals[3 * i as usize], 
                     mesh.normals[3 * i as usize + 1], 
                     mesh.normals[3 * i as usize + 2]
                 );
-                vec![normal[0], normal[1], normal[2]]
+
+                vec![mesh.texcoords[2 * i as usize], mesh.texcoords[2 * i as usize + 1], 
+                    normal[0], normal[1], normal[2]]
             };
 
-            let v0 = Vertex { position: get_position(indices[0]), attributes: get_normal(indices[0]) };
-            let v1 = Vertex { position: get_position(indices[1]), attributes: get_normal(indices[1]) };
-            let v2 = Vertex { position: get_position(indices[2]), attributes: get_normal(indices[2]) };
+            let mvp_matrix = vp_matrix * model_matrix;
+
+            let v0 = Vertex { position: mvp_matrix * get_position(indices[0]), attributes: get_attributes(indices[0]) };
+            let v1 = Vertex { position: mvp_matrix * get_position(indices[1]), attributes: get_attributes(indices[1]) };
+            let v2 = Vertex { position: mvp_matrix * get_position(indices[2]), attributes: get_attributes(indices[2]) };
 
             self.draw_triangle(&[&v0, &v1, &v2], shader);
         }
@@ -208,6 +232,6 @@ fn is_point_visible(p: Vec4) -> bool {
     p.x >= -p.w && p.x <= p.w && p.y >= -p.w && p.y <= p.w && p.z >= -p.w && p.z <= p.w
 }
 
-fn calc_area(a: &Vec2, b: &Vec2, c: &Vec2) -> f32 {
+fn edge_func(a: &Vec2, b: &Vec2, c: &Vec2) -> f32 {
     (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)
 }

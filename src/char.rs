@@ -1,3 +1,9 @@
+pub static ANSI_RESET: &str = "\x1b[0m";
+pub static ANSI_CLEAR_SCREEN: &str = "\x1b[2J";
+pub static ANSI_HIDE_CURSOR: &str = "\x1b[?25l";
+pub static ANSI_SHOW_CURSOR: &str = "\x1b[?25h";
+pub static ANSI_MOVE_CURSOR_TO_START: &str = "\x1b[H";
+
 #[derive(Debug, Clone, Copy)]
 pub enum CharColorLayer {
     Foreground,

@@ -1,3 +1,4 @@
+use glm::{vec4_to_vec3, Mat4, Vec3, Vec4};
 use itertools::Itertools;
 
 use crate::vertex::Vertex;
@@ -74,4 +75,15 @@ fn clip_component_signed(vertices: &Vec<Vertex>, component: &ClipComponent, sign
     }
 
     result
+}
+
+pub fn should_backface_cull(vertices: &[Vec4; 3], model_matrix: &Mat4, camera_pos: &Vec3) -> bool {
+    // Put points in model space
+    let points = vertices.iter().map(|p| vec4_to_vec3(&(model_matrix * p))).collect::<Vec<_>>();
+    // Pick any one of the triangle's points and calculate direction from camera
+    let direction_towards_point = (&points[0] - camera_pos).normalize();
+    // Calculate normal from winding order
+    let normal = (points[1] - points[0]).cross(&(points[2] - points[0])).normalize();
+    
+    direction_towards_point.dot(&normal) > 0.0
 }
