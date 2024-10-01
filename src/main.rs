@@ -11,6 +11,7 @@ pub mod char;
 pub mod vertex;
 pub mod clip;
 pub mod server;
+pub mod client;
 
 extern crate nalgebra_glm as glm;
 
@@ -60,7 +61,7 @@ async fn main() {
                 let size = 8.0;
                 let pattern: bool = ((tex_coord[0] * size % 1.0) > 0.5) ^ ((tex_coord[1] * size % 1.0) < 0.5);
                 let object_color = if pattern { vec3(0.8, 0.85, 1.0) } else { vec3(0.2, 0.6, 0.8) };
-                let result = (ambient + diffuse).component_mul(&object_color);
+                let result = (ambient + diffuse).component_mul(&object_color) + vec3(0.2, 0.2, 0.2);
                 
                 half_block_shader(c, &half, 
                     &CharColor { r: (result.x * 255.0) as u8, g: (result.y * 255.0) as u8, b: (result.z * 255.0) as u8 });
