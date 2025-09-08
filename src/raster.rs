@@ -22,7 +22,7 @@ pub fn half_block_shader(c: &mut CharInfo, half: &CharHalf, color: &CharColor) {
     }
 }
 
-pub type Shader = fn(&Vertex, &mut CharInfo, &CharHalf);
+pub type Shader = fn(&Vertex, &mut CharInfo, &CharHalf, f32);
 
 pub enum CharHalf {
     Top,
@@ -75,16 +75,16 @@ impl Framebuf {
             p.w)
     }
 
-    pub fn draw_line(&mut self, start: &Vertex, end: &Vertex, shader: Shader) {        
+    pub fn draw_line(&mut self, start: &Vertex, end: &Vertex, elapsed_time: f32, shader: Shader) {        
         if is_point_visible(start.position) && is_point_visible(end.position) {
-            self.raster_line(start, end, shader);
+            self.raster_line(start, end, elapsed_time, shader);
         }
 
         
     }
 
     // This function assumes the entire line is visible.
-    fn raster_line(&mut self, start: &Vertex, end: &Vertex, shader: Shader) {
+    fn raster_line(&mut self, start: &Vertex, end: &Vertex, elapsed_time: f32, shader: Shader) {
         let start_pos = self.prepare_position(&start.position);
         
         let difference = Vertex { 
@@ -109,16 +109,18 @@ impl Framebuf {
             shader(
                 &current, 
                 &mut self.char_buf[(y / 2) * self.w + x], 
-                if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
+                if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom },
+                elapsed_time
+            );
 
             current += &increment;
         }
     }
 
-    pub fn draw_triangle(&mut self, vertices: &[&Vertex; 3], shader: Shader) {
+    pub fn draw_triangle(&mut self, vertices: &[&Vertex; 3], elapsed_time: f32, shader: Shader) {
         // Raster triangle without clipping if all vertices are visible
         if !vertices.iter().map(|v| is_point_visible(v.position)).collect::<Vec<bool>>().contains(&false) {
-            self.raster_triangle(&vertices, shader);
+            self.raster_triangle(&vertices, elapsed_time, shader);
             return;
         }
 
@@ -129,12 +131,12 @@ impl Framebuf {
         }
 
         for i in 0..clipped.len() - 1 {
-            self.raster_triangle(&[&clipped[0], &clipped[i], &clipped[i + 1]], shader);
+            self.raster_triangle(&[&clipped[0], &clipped[i], &clipped[i + 1]], elapsed_time, shader);
         }
     }
 
     // Assumes entire triangle is visible
-    fn raster_triangle(&mut self, vertices: &[&Vertex; 3], shader: Shader) {
+    fn raster_triangle(&mut self, vertices: &[&Vertex; 3], elapsed_time: f32, shader: Shader) {
         // W division and viewport transformation
         let p = vertices.iter().map(|v| self.prepare_position(&v.position)).collect::<Vec<Vec4>>();
         let area_inv = 1.0 / edge_func(&p[0].xy(), &p[1].xy(), &p[2].xy());
@@ -186,12 +188,14 @@ impl Framebuf {
                 shader(
                     &vertex, 
                     &mut self.char_buf[(y / 2) * self.w + x], 
-                    if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom });
+                    if y % 2 == 0 { &CharHalf::Top } else { &CharHalf::Bottom },
+                    elapsed_time
+                );
             }
         }
     }
 
-    pub fn draw_model(&mut self, model: &Model, model_matrix: &Mat4, vp_matrix: &Mat4, normal_matrix: &Mat3, camera_pos: &Vec3, shader: Shader) {
+    pub fn draw_model(&mut self, model: &Model, model_matrix: &Mat4, vp_matrix: &Mat4, normal_matrix: &Mat3, camera_pos: &Vec3, elapsed_time: f32, shader: Shader) {
         let mesh = &model.mesh;
 
         for indices in mesh.indices.chunks(3) {     
@@ -223,7 +227,7 @@ impl Framebuf {
             let v1 = Vertex { position: mvp_matrix * get_position(indices[1]), attributes: get_attributes(indices[1]) };
             let v2 = Vertex { position: mvp_matrix * get_position(indices[2]), attributes: get_attributes(indices[2]) };
 
-            self.draw_triangle(&[&v0, &v1, &v2], shader);
+            self.draw_triangle(&[&v0, &v1, &v2], elapsed_time, shader);
         }
     }
 }
